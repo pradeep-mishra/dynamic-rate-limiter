@@ -3,33 +3,32 @@ const Redis = require('ioredis');
 class RateLimiter {
     constructor(env, endpoints, db) {
         env = env || 'local';
-        options = options || {};
-        this.rConn = null;
+        this.redis = null;
         this.pipeline = nul;
         this.defaultRate = 100;
         this.expire = 120;
         if (env.match(/local/ig)) {
-            rConn = new Redis({
+            redis = new Redis({
                 port: endpoints[0].port,
                 host: endpoints[0].host,
                 db: db
             })
         } else {
-            rConn = new Redis({
+            redis = new Redis({
                 sentinels: endpoints,
                 name: 'master',
                 db: db
             })
         }
-        this.pipeline = rConn.pipeline();
+        this.pipeline = redis.pipeline();
 
-        rConn.on("error", function (err) {
+        redis.on("error", function (err) {
             if (err) {
                 throw err;
             }
         });
 
-        rConn.on("ready", function () {
+        redis.on("ready", function () {
             console.log("redis is ready");
         });
     }
@@ -42,7 +41,7 @@ class RateLimiter {
     async increase(userId) {
         let me = this;
         let currentKey = this.getCurrentKey(userId);
-        return this.rConn.hincrby(currentKey, 'tokens', 1).then(function (tokens) {
+        return this.redis.hincrby(currentKey, 'tokens', 1).then(function (tokens) {
             if (tokens === 1) {
                 me.pipeline().expire(currentKey, me.expire).hset(currentKey, 'rate', me.defaultRate).exec(function (err, results) {});
             }
@@ -57,7 +56,7 @@ class RateLimiter {
 
     async setPlanRateForThisMinute(userId, rate) {
         let currentKey = this.getCurrentKey(userId);
-        return this.rConn.hincrby(currentKey, 'rate', rate).then(function (tokens) {
+        return this.redis.hincrby(currentKey, 'rate', rate).then(function (tokens) {
             return tokens;
         })
     }
